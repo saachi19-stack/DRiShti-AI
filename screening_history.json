@@ -50,5 +50,22 @@
         "guidance": "Ophthalmic evaluation should be prioritized.",
         "quality_score": 92,
         "quality_status": "Good"
+    },
+    {
+        "timestamp": "2026-09-06T01:21:57.552290",
+        "patient_name": "jhgv",
+        "patient_id": "544681",
+        "age": 39,
+        "sex": "Female",
+        "prediction": "Proliferative DR",
+        "confidence": 0.8290396928787231,
+        "image_quality": "GOOD",
+        "image_quality_score": 92.69146642784236,
+        "ai_reliability": "HIGH TRUST",
+        "reliability_score": 80.40387415086096,
+        "referral_priority": "URGENT REFERRAL",
+        "urgency": "VERY HIGH",
+        "decision_basis": "high confidence + low uncertainty + good image quality",
+        "connectivity": "Online"
     }
 ]

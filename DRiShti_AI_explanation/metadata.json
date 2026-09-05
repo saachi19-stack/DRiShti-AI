@@ -15,16 +15,16 @@
         "4": "Proliferative DR"
     },
     "features": [
-        "5-class diabetic retinopathy classification",
-        "prediction confidence",
-        "prediction margin analysis",
-        "entropy-based uncertainty analysis",
-        "model trust scoring",
-        "retinal image quality assessment",
-        "final trust assessment",
-        "referral priority engine",
-        "Grad-CAM explainability",
-        "specialist review escalation"
+        "5-Class Diabetic Retinopathy Screening",
+        "Prediction Confidence Analysis",
+        "Prediction Uncertainty Estimation",
+        "Image Quality Assessment",
+        "Model Trust Score",
+        "Final Trust Score",
+        "Trust-Aware Referral Priority",
+        "Grad-CAM Explainability",
+        "Simple Human-Readable Explanation",
+        "Technical Decision Explanation"
     ],
     "trust_engine": {
         "type": "prototype heuristic",
@@ -40,5 +40,6 @@
         "clinical_note": "Trust and referral logic are prototype heuristic components for AI-assisted screening and are not clinically validated."
     },
     "intended_use": "AI-assisted diabetic retinopathy screening and triage support. Not intended to replace ophthalmologist diagnosis.",
-    "version": "1.0.0"
+    "version": "1.1.0",
+    "description": "DrishtiAI is a trust-aware and explainable AI system for 5-class diabetic retinopathy screening. The system evaluates prediction confidence, uncertainty, retinal image quality, model trust, and final trust before generating referral recommendations and human-readable explanations."
 }

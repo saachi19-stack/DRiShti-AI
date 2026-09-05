@@ -1,448 +1,584 @@
-import streamlit as st
-import cv2
-import numpy as np
-import pandas as pd
 import os
+import sys
 import json
+import base64
 from datetime import datetime
+
+import streamlit as st
+import numpy as np
+import cv2
 from PIL import Image
+import matplotlib.pyplot as plt
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
 
 # ============================================================
-# DRiShti-AI
-# Explainable AI for Diabetic Retinopathy Screening
+# MODEL PACKAGE LOCATION
+# ============================================================
+# inference.py, metadata.json, class_names.json and
+# drishti_ai_efficientnet.keras all live together inside
+# the drishti_ai_explanation/ folder, not next to app.py.
+# Add that folder to sys.path so "from inference import DrishtiAI"
+# can find it, and point DrishtiAI at the same folder to load
+# its model/metadata/class files.
+
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR = os.path.join(APP_DIR, "drishti_ai_explanation")
+
+if MODEL_DIR not in sys.path:
+    sys.path.insert(0, MODEL_DIR)
+
+from inference import DrishtiAI
+
+
+# ============================================================
+# CONFIGURATION
 # ============================================================
 
 st.set_page_config(
-    page_title="DRiShti-AI | Diabetic Retinopathy Screening",
+    page_title="DRiShti-AI",
     page_icon="👁️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ============================================================
-# FOLDERS
-# ============================================================
-import os
+APP_NAME = "DRiShti-AI"
+TAGLINE = "Explainable AI for Diabetic Retinopathy Screening in Rural India"
 
-st.write("CURRENT FOLDER:", os.getcwd())
-st.write("REPORTS:", os.path.abspath("reports"))
-st.write("IS REPORTS A FOLDER:", os.path.isdir("reports"))
-st.write("IS REPORTS A FILE:", os.path.isfile("reports"))
-os.makedirs("reports", exist_ok=True)
-os.makedirs("sample_images", exist_ok=True)
-
+REPORT_DIR = "reports"
 HISTORY_FILE = "screening_history.json"
 
-# ============================================================
-# SESSION STATE
-# ============================================================
-
-if "screenings" not in st.session_state:
-    st.session_state.screenings = []
-
-if "analysis_done" not in st.session_state:
-    st.session_state.analysis_done = False
-
-if "analysis_data" not in st.session_state:
-    st.session_state.analysis_data = {}
-
-# Load previous local history
-if not st.session_state.screenings and os.path.exists(HISTORY_FILE):
-    try:
-        with open(HISTORY_FILE, "r") as f:
-            st.session_state.screenings = json.load(f)
-    except:
-        st.session_state.screenings = []
+os.makedirs(REPORT_DIR, exist_ok=True)
 
 
 # ============================================================
-# CSS
+# CUSTOM CSS
 # ============================================================
 
 st.markdown("""
 <style>
 
-.main {
-    background-color: #f7f9fc;
+:root {
+    --primary: #0F5C5C;
+    --bg: #F7F9FA;
+    --accent: #E8785A;
 }
 
-.hero {
-    padding: 28px;
-    border-radius: 18px;
-    background: linear-gradient(135deg, #eaf2ff, #f8fbff);
-    border: 1px solid #dbe7f5;
+.stApp {
+    background-color: var(--bg);
+}
+
+.main-title {
+    font-family: 'Segoe UI', 'Inter', sans-serif;
+    font-size: 42px;
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 0px;
+}
+
+.subtitle {
+    font-family: 'Segoe UI', 'Inter', sans-serif;
+    font-size: 18px;
+    color: #555;
     margin-bottom: 25px;
 }
 
-.hero-title {
-    font-size: 42px;
-    font-weight: 800;
-    margin-bottom: 5px;
+.section-title {
+    font-family: 'Segoe UI', 'Inter', sans-serif;
+    font-size: 25px;
+    font-weight: 700;
+    color: var(--primary);
+    margin-top: 20px;
+    border-left: 5px solid var(--primary);
+    padding-left: 12px;
 }
 
-.hero-subtitle {
-    font-size: 18px;
-    color: #536273;
-}
-
-.step-box {
-    padding: 18px;
+.result-box, .metric-card {
+    padding: 20px;
     border-radius: 14px;
-    background: white;
-    border: 1px solid #e2e8f0;
-    text-align: center;
-    min-height: 110px;
+    border: 1px solid #dfe8e8;
+    background-color: white;
 }
 
-.metric-box {
-    padding: 18px;
+.explanation-box {
+    padding: 20px;
     border-radius: 14px;
-    background: white;
-    border: 1px solid #e2e8f0;
-    text-align: center;
+    border: 1px solid #cfe3e3;
+    background-color: #eef7f7;
 }
 
-.metric-number {
-    font-size: 30px;
-    font-weight: 800;
+/* Buttons */
+.stButton > button {
+    background-color: var(--primary);
+    color: white;
+    border-radius: 10px;
+    border: none;
+    font-weight: 600;
 }
 
-.metric-label {
-    color: #64748b;
-    font-size: 14px;
+.stButton > button:hover {
+    background-color: #0c4747;
+    color: white;
 }
 
-.result-box {
-    padding: 25px;
-    border-radius: 16px;
-    background: white;
-    border: 1px solid #dbe3ec;
-}
-
-.warning-box {
-    padding: 15px;
-    border-radius: 12px;
-    background: #fff8e6;
-    border: 1px solid #f0d48a;
-}
-
-.info-box {
-    padding: 15px;
-    border-radius: 12px;
-    background: #eef6ff;
-    border: 1px solid #cfe2ff;
+/* Alerts that signal risk/urgency use the amber accent */
+div[data-testid="stAlert"][kind="warning"] {
+    border-left: 5px solid var(--accent);
 }
 
 .footer {
     text-align: center;
-    padding: 25px;
-    color: #718096;
+    color: #888;
+    font-size: 13px;
+    margin-top: 40px;
 }
 
 </style>
 """, unsafe_allow_html=True)
 
+# ============================================================
+# LOAD AI MODEL
+# ============================================================
+
+@st.cache_resource
+def load_ai_model():
+    return DrishtiAI(MODEL_DIR)
+
+
+try:
+    ai = load_ai_model()
+    model_loaded = True
+except Exception as e:
+    ai = None
+    model_loaded = False
+    model_error = str(e)
+
 
 # ============================================================
-# FUNCTIONS
+# HISTORY FUNCTIONS
 # ============================================================
 
-def assess_image_quality(image):
-    """
-    Basic retinal-image quality assessment.
-    Uses blur, brightness and contrast.
-    """
+def load_history():
 
-    img = np.array(image)
+    if not os.path.exists(HISTORY_FILE):
+        return []
 
-    if len(img.shape) == 3:
-        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    else:
-        gray = img
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
 
-    blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
-    brightness = float(np.mean(gray))
-    contrast = float(np.std(gray))
+    except Exception:
+        return []
 
-    # Blur score
-    if blur_score >= 150:
-        blur_quality = 100
-    elif blur_score >= 80:
-        blur_quality = 75
-    elif blur_score >= 40:
-        blur_quality = 50
-    else:
-        blur_quality = 20
 
-    # Brightness
-    if 70 <= brightness <= 190:
-        brightness_quality = 100
-    elif 45 <= brightness <= 220:
-        brightness_quality = 70
-    else:
-        brightness_quality = 35
+def save_history(record):
 
-    # Contrast
-    if contrast >= 45:
-        contrast_quality = 100
-    elif contrast >= 25:
-        contrast_quality = 70
-    else:
-        contrast_quality = 35
+    history = load_history()
 
-    quality_score = int(
-        0.5 * blur_quality +
-        0.25 * brightness_quality +
-        0.25 * contrast_quality
+    history.append(record)
+
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history, f, indent=4)
+
+
+# ============================================================
+# IMAGE QUALITY VISUALIZATION
+# ============================================================
+
+def create_quality_chart(quality):
+
+    labels = [
+        "Brightness",
+        "Contrast",
+        "Sharpness"
+    ]
+
+    values = [
+        quality["brightness_score"],
+        quality["contrast_score"],
+        quality["sharpness_score"]
+    ]
+
+    fig, ax = plt.subplots(figsize=(7, 3))
+
+    ax.bar(labels, values)
+
+    ax.set_ylim(0, 100)
+
+    ax.set_ylabel("Score")
+
+    ax.set_title("Retinal Image Quality Assessment")
+
+    for i, value in enumerate(values):
+        ax.text(
+            i,
+            value + 2,
+            f"{value:.1f}",
+            ha="center"
+        )
+
+    plt.tight_layout()
+
+    return fig
+
+
+# ============================================================
+# GRAD-CAM OVERLAY
+# ============================================================
+
+def create_gradcam_overlay(image, heatmap):
+
+    image = np.array(image.convert("RGB"))
+
+    heatmap = cv2.resize(
+        heatmap,
+        (image.shape[1], image.shape[0])
     )
 
-    if quality_score >= 70:
-        status = "Good"
-    else:
-        status = "Needs Review"
+    heatmap_uint8 = np.uint8(
+        255 * heatmap
+    )
 
-    return {
-        "score": quality_score,
-        "status": status,
-        "blur": round(blur_score, 2),
-        "brightness": round(brightness, 2),
-        "contrast": round(contrast, 2)
-    }
+    colored_heatmap = cv2.applyColorMap(
+        heatmap_uint8,
+        cv2.COLORMAP_JET
+    )
 
-
-def demo_prediction():
-    """
-    TEMPORARY DEMO ONLY.
-
-    This will be replaced with the actual trained ML model.
-    """
-
-    severity = "Moderate Diabetic Retinopathy"
-    confidence = 91.0
-
-    return severity, confidence
-
-
-def generate_demo_heatmap(image):
-    """
-    TEMPORARY visualization.
-
-    NOT actual Grad-CAM.
-    Will be replaced after the trained model is connected.
-    """
-
-    img = np.array(image)
-
-    if len(img.shape) == 3:
-        gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    else:
-        gray = img
-
-    gray = cv2.resize(gray, (512, 512))
-
-    # Demo visualization
-    heatmap = cv2.applyColorMap(gray, cv2.COLORMAP_JET)
-    heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-
-    original = cv2.resize(img, (512, 512))
+    colored_heatmap = cv2.cvtColor(
+        colored_heatmap,
+        cv2.COLOR_BGR2RGB
+    )
 
     overlay = cv2.addWeighted(
-        original.astype(np.uint8),
-        0.55,
-        heatmap.astype(np.uint8),
-        0.45,
+        image,
+        0.60,
+        colored_heatmap,
+        0.40,
         0
     )
 
     return overlay
 
 
-def get_risk_information(severity):
+# ============================================================
+# PDF REPORT
+# ============================================================
 
-    severity_lower = severity.lower()
+def generate_pdf(
+    patient_name,
+    patient_id,
+    age,
+    sex,
+    result,
+    image_quality
+):
 
-    if "no dr" in severity_lower:
-        return (
-            "LOW",
-            "Routine",
-            "No diabetic retinopathy detected by the AI screening model."
-        )
-
-    elif "mild" in severity_lower:
-        return (
-            "MODERATE",
-            "Follow-up",
-            "Follow-up ophthalmic evaluation is recommended."
-        )
-
-    elif "moderate" in severity_lower:
-        return (
-            "HIGH",
-            "High Priority",
-            "Ophthalmic evaluation should be prioritized."
-        )
-
-    elif "severe" in severity_lower:
-        return (
-            "VERY HIGH",
-            "Urgent",
-            "Urgent specialist evaluation is recommended."
-        )
-
-    elif "proliferative" in severity_lower:
-        return (
-            "VERY HIGH",
-            "Urgent",
-            "Urgent specialist evaluation is recommended."
-        )
-
-    return (
-        "REVIEW",
-        "Manual Review",
-        "Professional review is recommended."
+    timestamp = datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
     )
 
-
-def save_screening(record):
-
-    st.session_state.screenings.append(record)
-
-    try:
-        with open(HISTORY_FILE, "w") as f:
-            json.dump(
-                st.session_state.screenings,
-                f,
-                indent=4
-            )
-    except Exception as e:
-        st.warning(f"Could not save local history: {e}")
-
-
-def create_pdf(record, heatmap_path=None):
-
-    filename = (
-        f"reports/"
-        f"DRiShti_AI_{record['patient_id']}_"
-        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    safe_name = patient_name.replace(
+        " ",
+        "_"
     )
 
-    c = canvas.Canvas(filename, pagesize=A4)
+    filename = os.path.join(
+        REPORT_DIR,
+        f"DRiShti_AI_{safe_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    )
+
+    c = canvas.Canvas(
+        filename,
+        pagesize=A4
+    )
 
     width, height = A4
 
-    y = height - 60
+    y = height - 50
 
-    c.setFont("Helvetica-Bold", 22)
-    c.drawString(50, y, "DRiShti-AI")
+    # Header
+    c.setFont(
+        "Helvetica-Bold",
+        22
+    )
+
+    c.drawString(
+        50,
+        y,
+        "DRiShti-AI"
+    )
 
     y -= 25
 
-    c.setFont("Helvetica", 11)
+    c.setFont(
+        "Helvetica",
+        10
+    )
+
     c.drawString(
         50,
         y,
-        "Explainable AI for Diabetic Retinopathy Screening"
+        TAGLINE
     )
-
-    y -= 45
-
-    c.setFont("Helvetica-Bold", 13)
-    c.drawString(50, y, "Screening Report")
-
-    y -= 30
-
-    c.setFont("Helvetica", 11)
-
-    details = [
-        f"Patient ID: {record['patient_id']}",
-        f"Age: {record['age']}",
-        f"Diabetes Duration: {record['diabetes_duration']} years",
-        f"Date: {record['date']}",
-        "",
-        f"Image Quality: {record['quality_status']}",
-        f"Quality Score: {record['quality_score']}/100",
-        "",
-        f"AI Screening Result: {record['severity']}",
-        f"Model Confidence: {record['confidence']:.2f}%",
-        f"Risk Level: {record['risk']}",
-        f"Referral Priority: {record['referral']}",
-    ]
-
-    for line in details:
-
-        if line == "":
-            y -= 10
-            continue
-
-        c.drawString(55, y, line)
-        y -= 20
-
-    y -= 15
-
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(50, y, "Referral Guidance")
-
-    y -= 20
-
-    c.setFont("Helvetica", 10)
-
-    guidance = record["guidance"]
-
-    # Wrap guidance
-    words = guidance.split()
-    line = ""
-
-    for word in words:
-
-        if len(line + " " + word) > 80:
-            c.drawString(55, y, line)
-            y -= 15
-            line = word
-        else:
-            line += " " + word
-
-    if line:
-        c.drawString(55, y, line)
 
     y -= 40
 
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(50, y, "Important Disclaimer")
-
-    y -= 18
-
-    c.setFont("Helvetica", 9)
-
-    disclaimer = (
-        "This system is an AI-assisted screening prototype and "
-        "does not replace examination or diagnosis by a qualified "
-        "healthcare professional."
+    # Patient information
+    c.setFont(
+        "Helvetica-Bold",
+        14
     )
-
-    words = disclaimer.split()
-    line = ""
-
-    for word in words:
-
-        if len(line + " " + word) > 90:
-            c.drawString(55, y, line)
-            y -= 13
-            line = word
-        else:
-            line += " " + word
-
-    if line:
-        c.drawString(55, y, line)
-
-    y -= 35
 
     c.drawString(
         50,
         y,
-        "DRiShti-AI | SIH26038"
+        "Patient Information"
+    )
+
+    y -= 25
+
+    c.setFont(
+        "Helvetica",
+        11
+    )
+
+    patient_details = [
+        f"Name: {patient_name}",
+        f"Patient ID: {patient_id}",
+        f"Age: {age}",
+        f"Sex: {sex}",
+        f"Screening Time: {timestamp}"
+    ]
+
+    for line in patient_details:
+
+        c.drawString(
+            60,
+            y,
+            line
+        )
+
+        y -= 18
+
+    y -= 15
+
+    # AI result
+    c.setFont(
+        "Helvetica-Bold",
+        14
+    )
+
+    c.drawString(
+        50,
+        y,
+        "AI Screening Result"
+    )
+
+    y -= 25
+
+    c.setFont(
+        "Helvetica",
+        11
+    )
+
+    prediction = result["prediction"]
+
+    lines = [
+        f"Predicted Class: {prediction['class_name']}",
+        f"AI Confidence: {prediction['confidence'] * 100:.2f}%",
+        f"Image Quality: {image_quality['status']}",
+        f"Image Quality Score: {image_quality['percentage']:.2f}%",
+        f"AI Reliability: {result['final_trust']['status']}",
+        f"Reliability Score: {result['final_trust']['percentage']:.2f}%",
+        f"Referral Priority: {result['referral']['priority']}",
+        f"Urgency: {result['referral']['urgency_level']}"
+    ]
+
+    for line in lines:
+
+        c.drawString(
+            60,
+            y,
+            line
+        )
+
+        y -= 18
+
+    y -= 15
+
+    def wrap_paragraph(c, text, x, y, max_len, font="Helvetica", size=10, leading=16):
+
+        c.setFont(font, size)
+
+        words = text.split()
+
+        current_line = ""
+
+        for word in words:
+
+            test_line = current_line + " " + word
+
+            if len(test_line) > max_len:
+
+                c.drawString(x, y, current_line.strip())
+
+                y -= leading
+
+                current_line = word
+
+            else:
+
+                current_line = test_line
+
+        if current_line:
+
+            c.drawString(x, y, current_line.strip())
+
+            y -= leading
+
+        return y
+
+    # Recommendation
+    c.setFont(
+        "Helvetica-Bold",
+        14
+    )
+
+    c.drawString(
+        50,
+        y,
+        "Recommended Action"
+    )
+
+    y -= 25
+
+    recommendation = result[
+        "referral"
+    ]["action"]
+
+    y = wrap_paragraph(
+        c,
+        recommendation,
+        60,
+        y,
+        max_len=85,
+        font="Helvetica",
+        size=10,
+        leading=16
+    )
+
+    y -= 10
+
+    # --------------------------------------------------------
+    # EXPLAINABLE AI SUMMARY (new)
+    # --------------------------------------------------------
+
+    explanation = result.get("explanation")
+
+    if explanation:
+
+        if y < 150:
+            c.showPage()
+            y = height - 50
+
+        c.setFont(
+            "Helvetica-Bold",
+            14
+        )
+
+        c.drawString(
+            50,
+            y,
+            "AI Explanation (Plain Language)"
+        )
+
+        y -= 22
+
+        simple = explanation.get("simple", {})
+
+        y = wrap_paragraph(
+            c,
+            simple.get("summary", ""),
+            60,
+            y,
+            max_len=90,
+            font="Helvetica",
+            size=10,
+            leading=15
+        )
+
+        y -= 8
+
+        y = wrap_paragraph(
+            c,
+            simple.get("recommendation_explanation", ""),
+            60,
+            y,
+            max_len=90,
+            font="Helvetica-Oblique",
+            size=9,
+            leading=14
+        )
+
+        y -= 15
+
+        technical = explanation.get("technical", {})
+
+        decision_basis = technical.get("decision_basis", "")
+
+        if decision_basis:
+
+            c.setFont(
+                "Helvetica-Bold",
+                11
+            )
+
+            c.drawString(
+                50,
+                y,
+                "Decision Basis:"
+            )
+
+            y -= 16
+
+            y = wrap_paragraph(
+                c,
+                decision_basis,
+                60,
+                y,
+                max_len=95,
+                font="Helvetica",
+                size=9,
+                leading=13
+            )
+
+    y -= 15
+
+    if y < 90:
+        c.showPage()
+        y = height - 50
+
+    # Disclaimer
+    c.setFont(
+        "Helvetica-Oblique",
+        8
+    )
+
+    disclaimer = (
+        "Disclaimer: DRiShti-AI is an AI-assisted screening prototype. "
+        "It does not replace professional medical examination, "
+        "clinical judgment, or diagnosis by a qualified healthcare professional."
+    )
+
+    y = wrap_paragraph(
+        c,
+        disclaimer,
+        50,
+        y,
+        max_len=100,
+        font="Helvetica-Oblique",
+        size=8,
+        leading=13
     )
 
     c.save()
@@ -456,211 +592,183 @@ def create_pdf(record, heatmap_path=None):
 
 with st.sidebar:
 
-    st.markdown("## 👁️ DRiShti-AI")
+    st.markdown(
+        "## 👁️ DRiShti-AI"
+    )
 
     st.caption(
-        "Explainable AI for Diabetic Retinopathy Screening"
+        "AI-assisted retinal screening"
     )
 
     st.divider()
 
-    st.markdown("### Connectivity")
-
-    connectivity = st.toggle(
-        "Limited Connectivity Mode",
-        value=False
+    st.markdown(
+        "### 🌐 Connectivity"
     )
 
-    if connectivity:
-        st.warning(
-            "Offline-first mode active. "
-            "Screening records will be stored locally."
+    connectivity = st.selectbox(
+        "Current mode",
+        [
+            "Online",
+            "Limited Connectivity",
+            "Offline / Local"
+        ]
+    )
+
+    st.divider()
+
+    st.markdown(
+        "### 🔄 Screening Workflow"
+    )
+
+    st.write("1️⃣ Image Capture / Upload")
+    st.write("2️⃣ Image Quality Check")
+    st.write("3️⃣ AI DR Screening")
+    st.write("4️⃣ Explainable AI (Grad-CAM + Plain-Language)")
+    st.write("5️⃣ Referral Prioritization")
+
+    st.divider()
+
+    if model_loaded:
+
+        st.success(
+            "AI Model Loaded"
         )
+
     else:
-        st.success("Online mode")
 
-    st.divider()
+        st.error(
+            "AI Model Failed to Load"
+        )
 
-    st.markdown("### Screening Workflow")
-
-    st.markdown("""
-    **1.** Retinal Image  
-    ↓  
-    **2.** Image Quality Check  
-    ↓  
-    **3.** DR Severity Screening  
-    ↓  
-    **4.** Explainable AI  
-    ↓  
-    **5.** Risk & Referral
-    """)
-
-    st.divider()
-
-    st.markdown("### About")
-
-    st.info(
-        "DRiShti-AI is designed as an AI-assisted "
-        "screening support tool for diabetic retinopathy."
-    )
+        st.caption(
+            model_error
+        )
 
 
 # ============================================================
-# HERO
+# HEADER
 # ============================================================
 
-st.markdown("""
-<div class="hero">
+st.markdown(
+    '<div class="main-title">👁️ DRiShti-AI</div>',
+    unsafe_allow_html=True
+)
 
-<div class="hero-title">
-👁️ DRiShti-AI
-</div>
-
-<div class="hero-subtitle">
-Explainable AI for Diabetic Retinopathy Screening in Rural India
-</div>
-
-</div>
-""", unsafe_allow_html=True)
+st.markdown(
+    f'<div class="subtitle">{TAGLINE}</div>',
+    unsafe_allow_html=True
+)
 
 
 # ============================================================
-# DASHBOARD
+# DASHBOARD METRICS
 # ============================================================
 
-total = len(st.session_state.screenings)
+history = load_history()
+
+total_screened = len(history)
 
 high_priority = sum(
-    1 for x in st.session_state.screenings
-    if x.get("risk") in ["HIGH", "VERY HIGH"]
+    1
+    for item in history
+    if "PRIORITY" in item.get(
+        "referral_priority",
+        ""
+    )
+    or "URGENT" in item.get(
+        "referral_priority",
+        ""
+    )
 )
 
-urgent = sum(
-    1 for x in st.session_state.screenings
-    if x.get("referral") == "Urgent"
+urgent_cases = sum(
+    1
+    for item in history
+    if "URGENT" in item.get(
+        "referral_priority",
+        ""
+    )
 )
 
-pending = (
-    total if connectivity else 0
-)
 
-c1, c2, c3, c4 = st.columns(4)
-
-with c1:
-    st.markdown(
-        f"""
-        <div class="metric-box">
-        <div class="metric-number">{total}</div>
-        <div class="metric-label">Total Screened</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with c2:
-    st.markdown(
-        f"""
-        <div class="metric-box">
-        <div class="metric-number">{high_priority}</div>
-        <div class="metric-label">High Priority</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with c3:
-    st.markdown(
-        f"""
-        <div class="metric-box">
-        <div class="metric-number">{urgent}</div>
-        <div class="metric-label">Urgent Referrals</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-with c4:
-    st.markdown(
-        f"""
-        <div class="metric-box">
-        <div class="metric-number">{pending}</div>
-        <div class="metric-label">Local Records</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-
-# ============================================================
-# WORKFLOW
-# ============================================================
-
-st.markdown("### 🔄 Screening Workflow")
-
-steps = [
-    ("📷", "Capture", "Upload retinal image"),
-    ("🔍", "Quality", "Check image quality"),
-    ("🧠", "AI Screening", "Predict DR severity"),
-    ("💡", "Explain", "Visualize AI reasoning"),
-    ("🏥", "Refer", "Prioritize follow-up")
-]
-
-cols = st.columns(5)
-
-for col, step in zip(cols, steps):
-
-    with col:
-
-        st.markdown(
-            f"""
-            <div class="step-box">
-            <div style="font-size:30px">{step[0]}</div>
-            <b>{step[1]}</b>
-            <br>
-            <small>{step[2]}</small>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-
-# ============================================================
-# PATIENT DETAILS
-# ============================================================
-
-st.markdown("### 👤 Patient Information")
-
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
 
-    patient_id = st.text_input(
-        "Patient ID",
-        placeholder="Example: DR-001"
+    st.metric(
+        "Total Screened",
+        total_screened
     )
 
 with col2:
+
+    st.metric(
+        "Priority Cases",
+        high_priority
+    )
+
+with col3:
+
+    st.metric(
+        "Urgent Cases",
+        urgent_cases
+    )
+
+with col4:
+
+    st.metric(
+        "Local Records",
+        total_screened
+    )
+
+
+st.divider()
+
+
+# ============================================================
+# PATIENT INFORMATION
+# ============================================================
+
+st.markdown(
+    '<div class="section-title">👤 Patient Information</div>',
+    unsafe_allow_html=True
+)
+
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+
+    patient_name = st.text_input(
+        "Patient Name",
+        placeholder="Enter name"
+    )
+
+with col2:
+
+    patient_id = st.text_input(
+        "Patient ID",
+        placeholder="e.g. DR-001"
+    )
+
+with col3:
 
     age = st.number_input(
         "Age",
         min_value=1,
         max_value=120,
-        value=45
+        value=40
     )
 
-with col3:
+with col4:
 
-    diabetes_duration = st.number_input(
-        "Diabetes Duration (years)",
-        min_value=0,
-        max_value=80,
-        value=5
+    sex = st.selectbox(
+        "Sex",
+        [
+            "Male",
+            "Female",
+            "Other"
+        ]
     )
 
 
@@ -668,19 +776,28 @@ with col3:
 # IMAGE UPLOAD
 # ============================================================
 
-st.markdown("### 📷 Retinal Image")
+st.markdown(
+    '<div class="section-title">📷 Retinal Image</div>',
+    unsafe_allow_html=True
+)
 
 uploaded_file = st.file_uploader(
-    "Upload a fundus / retinal image",
-    type=["jpg", "jpeg", "png"]
+    "Upload a retinal fundus image",
+    type=[
+        "jpg",
+        "jpeg",
+        "png"
+    ]
 )
 
 
 if uploaded_file:
 
-    image = Image.open(uploaded_file).convert("RGB")
+    image = Image.open(
+        uploaded_file
+    ).convert("RGB")
 
-    col1, col2 = st.columns([1, 1])
+    col1, col2 = st.columns(2)
 
     with col1:
 
@@ -692,278 +809,648 @@ if uploaded_file:
 
     with col2:
 
-        st.markdown("#### 🔍 Image Quality Assessment")
+        st.info(
+            "Image received successfully. "
+            "The AI will first assess image quality "
+            "before performing diabetic retinopathy screening."
+        )
 
-        quality = assess_image_quality(image)
 
-        q1, q2, q3 = st.columns(3)
+# ============================================================
+# ANALYSIS
+# ============================================================
 
-        with q1:
-            st.metric(
-                "Quality Score",
-                f"{quality['score']}/100"
-            )
+if uploaded_file:
 
-        with q2:
-            st.metric(
-                "Brightness",
-                quality["brightness"]
-            )
+    st.divider()
 
-        with q3:
-            st.metric(
-                "Contrast",
-                quality["contrast"]
-            )
-
-        if quality["status"] == "Good":
-
-            st.success(
-                "Image quality is suitable for screening."
-            )
-
-        else:
-
-            st.warning(
-                "Image may need to be retaken or reviewed."
-            )
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    analyze = st.button(
-        "🧠 Analyze Retinal Image",
+    analyze_button = st.button(
+        "🔍 Analyze Retinal Image",
         type="primary",
         use_container_width=True
     )
 
+    if analyze_button:
 
-    # ========================================================
-    # ANALYSIS
-    # ========================================================
+        if not model_loaded:
 
-    if analyze:
+            st.error(
+                "AI model could not be loaded."
+            )
 
-        if not patient_id.strip():
+            st.stop()
 
-            st.error("Please enter a Patient ID.")
+        # Save temporary image
+        temp_path = os.path.join(
+            REPORT_DIR,
+            "temp_screening_image.png"
+        )
 
-        else:
+        image.save(
+            temp_path
+        )
 
-            with st.spinner("Analyzing retinal image..."):
+        try:
 
-                # TEMPORARY DEMO MODEL
-                severity, confidence = demo_prediction()
+            with st.spinner(
+                "Running DRiShti-AI screening..."
+            ):
 
-                risk, referral, guidance = get_risk_information(
-                    severity
+                result = ai.analyze(
+                    temp_path,
+                    generate_gradcam=True
                 )
 
-                heatmap = generate_demo_heatmap(image)
+            st.session_state[
+                "analysis_result"
+            ] = result
 
-                record = {
-                    "patient_id": patient_id,
-                    "age": int(age),
-                    "diabetes_duration": int(diabetes_duration),
-                    "date": datetime.now().strftime(
-                        "%d-%m-%Y %H:%M"
-                    ),
-                    "severity": severity,
-                    "confidence": confidence,
-                    "risk": risk,
-                    "referral": referral,
-                    "guidance": guidance,
-                    "quality_score": quality["score"],
-                    "quality_status": quality["status"]
-                }
+            st.session_state[
+                "analysis_image"
+            ] = image
 
-                st.session_state.analysis_data = {
-                    "record": record,
-                    "heatmap": heatmap
-                }
+        except Exception as e:
 
-                st.session_state.analysis_done = True
+            st.error(
+                "Analysis failed."
+            )
 
-                save_screening(record)
+            st.code(
+                str(e)
+            )
 
 
 # ============================================================
-# RESULTS
+# DISPLAY RESULT
 # ============================================================
 
-if st.session_state.analysis_done:
+if "analysis_result" in st.session_state:
 
-    data = st.session_state.analysis_data
-    record = data["record"]
-    heatmap = data["heatmap"]
+    result = st.session_state[
+        "analysis_result"
+    ]
+
+    image = st.session_state[
+        "analysis_image"
+    ]
+
+    prediction = result[
+        "prediction"
+    ]
+
+    uncertainty = result[
+        "uncertainty"
+    ]
+
+    model_trust = result[
+        "model_trust"
+    ]
+
+    image_quality = result[
+        "image_quality"
+    ]
+
+    final_trust = result[
+        "final_trust"
+    ]
+
+    referral = result[
+        "referral"
+    ]
+
+    explanation = result.get(
+        "explanation",
+        {}
+    )
+
+    simple_explanation = explanation.get(
+        "simple",
+        {}
+    )
+
+    technical_explanation = explanation.get(
+        "technical",
+        {}
+    )
 
     st.divider()
 
-    st.markdown("## 🧠 AI Screening Result")
+    # --------------------------------------------------------
+    # RESULT
+    # --------------------------------------------------------
 
-    st.warning(
-        "DEMO MODE — The current prediction is a placeholder. "
-        "The trained DR model will replace this result."
+    st.markdown(
+        '<div class="section-title">🧠 AI Screening Result</div>',
+        unsafe_allow_html=True
     )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
 
-        st.markdown(
-            f"""
-            <div class="result-box">
-            <h4>Detected Severity</h4>
-            <h2>{record['severity']}</h2>
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.metric(
+            "Predicted Severity",
+            prediction["class_name"]
         )
 
     with col2:
 
-        st.markdown(
-            f"""
-            <div class="result-box">
-            <h4>Model Confidence</h4>
-            <h2>{record['confidence']:.1f}%</h2>
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.metric(
+            "AI Confidence",
+            f"{prediction['confidence'] * 100:.1f}%"
         )
 
     with col3:
 
+        st.metric(
+            "AI Reliability",
+            final_trust["status"]
+        )
+
+    with col4:
+
+        st.metric(
+            "Reliability Score",
+            f"{final_trust['percentage']:.1f}%"
+        )
+
+
+    # --------------------------------------------------------
+    # PLAIN-LANGUAGE EXPLANATION (new)
+    # --------------------------------------------------------
+
+    if simple_explanation:
+
         st.markdown(
-            f"""
-            <div class="result-box">
-            <h4>Risk Level</h4>
-            <h2>{record['risk']}</h2>
-            <b>{record['referral']}</b>
-            </div>
-            """,
+            '<div class="section-title">🗣️ What This Means (Plain Language)</div>',
             unsafe_allow_html=True
         )
 
+        st.markdown(
+            f'<div class="explanation-box">{simple_explanation.get("summary", "")}</div>',
+            unsafe_allow_html=True
+        )
 
-    st.markdown("<br>", unsafe_allow_html=True)
+        reason_cols = st.columns(2)
+
+        with reason_cols[0]:
+
+            st.write(
+                f"🔹 {simple_explanation.get('confidence_reason', '')}"
+            )
+
+            st.write(
+                f"🔹 {simple_explanation.get('uncertainty_reason', '')}"
+            )
+
+        with reason_cols[1]:
+
+            st.write(
+                f"🔹 {simple_explanation.get('image_quality_reason', '')}"
+            )
+
+            st.write(
+                f"🔹 {simple_explanation.get('trust_reason', '')}"
+            )
+
+        st.info(
+            simple_explanation.get(
+                "recommendation_explanation",
+                ""
+            )
+        )
 
 
-    # ========================================================
-    # EXPLAINABILITY
-    # ========================================================
+    # --------------------------------------------------------
+    # PROBABILITIES
+    # --------------------------------------------------------
 
-    st.markdown("### 💡 Explainable AI")
+    st.markdown(
+        "### 📊 Class Probabilities"
+    )
 
-    col1, col2 = st.columns(2)
+    probability_data = prediction[
+        "all_probabilities"
+    ]
 
-    with col1:
+    for class_name, probability in probability_data.items():
 
-        st.image(
-            heatmap,
-            caption="Demo visualization — will be replaced by actual Grad-CAM",
+        st.write(
+            f"**{class_name}** — {probability * 100:.2f}%"
+        )
+
+        st.progress(
+            float(probability)
+        )
+
+
+    # --------------------------------------------------------
+    # IMAGE QUALITY
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 📷 Image Quality Assessment"
+    )
+
+    quality_col1, quality_col2 = st.columns(2)
+
+    with quality_col1:
+
+        st.metric(
+            "Quality Status",
+            image_quality["status"]
+        )
+
+        st.metric(
+            "Overall Quality",
+            f"{image_quality['percentage']:.1f}%"
+        )
+
+        st.write(
+            f"Brightness: {image_quality['brightness']:.2f}"
+        )
+
+        st.write(
+            f"Contrast: {image_quality['contrast']:.2f}"
+        )
+
+        st.write(
+            f"Sharpness: {image_quality['sharpness']:.2f}"
+        )
+
+    with quality_col2:
+
+        fig = create_quality_chart(
+            image_quality
+        )
+
+        st.pyplot(
+            fig,
             use_container_width=True
         )
 
-    with col2:
+        plt.close(fig)
 
-        st.markdown("""
-        #### Why Explainability?
 
-        DRiShti-AI is designed to provide a visual explanation
-        alongside its screening prediction.
+    # --------------------------------------------------------
+    # UNCERTAINTY
+    # --------------------------------------------------------
 
-        **Actual implementation:**
+    st.markdown(
+        "### 🧮 Prediction Uncertainty"
+    )
 
-        `Retinal Image`
-        ↓
+    u1, u2, u3 = st.columns(3)
 
-        `AI Model`
-        ↓
+    with u1:
 
-        `Prediction`
-        +
-        `Grad-CAM`
-        ↓
+        st.metric(
+            "Confidence",
+            f"{uncertainty['confidence'] * 100:.1f}%"
+        )
 
-        `Highlighted Retinal Regions`
+    with u2:
 
-        This helps healthcare workers understand which
-        retinal regions contributed to the model's prediction.
-        """)
+        st.metric(
+            "Prediction Margin",
+            f"{uncertainty['margin'] * 100:.1f}%"
+        )
 
-        st.info(
-            "The current heatmap is a prototype visualization. "
-            "Actual Grad-CAM will be connected with the trained "
-            "model."
+    with u3:
+
+        st.metric(
+            "Normalized Entropy",
+            f"{uncertainty['entropy']:.3f}"
         )
 
 
-    # ========================================================
-    # RISK / REFERRAL
-    # ========================================================
+    # --------------------------------------------------------
+    # EXPLAINABLE AI
+    # --------------------------------------------------------
 
-    st.markdown("### 🏥 Risk & Referral Prioritization")
+    st.markdown(
+        '<div class="section-title">🔥 Explainable AI — Grad-CAM</div>',
+        unsafe_allow_html=True
+    )
 
-    if record["referral"] == "Urgent":
+    st.write(
+        "The highlighted regions represent image areas "
+        "that contributed strongly to the model's prediction."
+    )
 
-        st.error(
-            f"🚨 {record['referral']}: {record['guidance']}"
+    heatmap = result.get(
+        "gradcam_heatmap"
+    )
+
+    if heatmap is not None:
+
+        overlay = create_gradcam_overlay(
+            image,
+            heatmap
         )
 
-    elif record["referral"] == "High Priority":
+        col1, col2 = st.columns(2)
 
-        st.warning(
-            f"⚠️ {record['referral']}: {record['guidance']}"
-        )
+        with col1:
+
+            st.image(
+                image,
+                caption="Original Fundus Image",
+                use_container_width=True
+            )
+
+        with col2:
+
+            st.image(
+                overlay,
+                caption="Grad-CAM Explainability Heatmap",
+                use_container_width=True
+            )
 
     else:
 
-        st.info(
-            f"ℹ️ {record['referral']}: {record['guidance']}"
+        st.warning(
+            "Grad-CAM could not be generated."
         )
 
 
-    # ========================================================
-    # REPORT
-    # ========================================================
+    # --------------------------------------------------------
+    # TECHNICAL EXPLANATION (new, for clinicians)
+    # --------------------------------------------------------
 
-    st.markdown("### 📄 Screening Report")
+    if technical_explanation:
 
-    report_df = pd.DataFrame({
-        "Parameter": [
-            "Patient ID",
-            "Age",
-            "Diabetes Duration",
-            "Image Quality",
-            "Quality Score",
-            "AI Screening Result",
-            "Confidence",
-            "Risk Level",
-            "Referral Priority"
-        ],
-        "Result": [
-            record["patient_id"],
-            record["age"],
-            f"{record['diabetes_duration']} years",
-            record["quality_status"],
-            f"{record['quality_score']}/100",
-            record["severity"],
-            f"{record['confidence']:.1f}%",
-            record["risk"],
-            record["referral"]
-        ]
-    })
+        with st.expander(
+            "🧑‍⚕️ Technical Decision Explanation (for clinical review)"
+        ):
 
-    st.table(report_df)
+            tech_pred = technical_explanation.get(
+                "prediction", {}
+            )
 
-    pdf_file = create_pdf(record)
+            tech_uncertainty = technical_explanation.get(
+                "uncertainty", {}
+            )
 
-    with open(pdf_file, "rb") as f:
+            tech_quality = technical_explanation.get(
+                "image_quality", {}
+            )
+
+            tech_model_trust = technical_explanation.get(
+                "model_trust", {}
+            )
+
+            tech_final_trust = technical_explanation.get(
+                "final_trust", {}
+            )
+
+            tech_referral = technical_explanation.get(
+                "referral", {}
+            )
+
+            st.write(
+                f"**Prediction:** {tech_pred.get('class', '')} "
+                f"({tech_pred.get('confidence_percentage', 0):.2f}%) — "
+                f"{tech_pred.get('interpretation', '')}"
+            )
+
+            st.write(
+                f"**Prediction Margin:** "
+                f"{tech_uncertainty.get('prediction_margin_percentage', 0):.2f}% — "
+                f"{tech_uncertainty.get('margin_interpretation', '')}"
+            )
+
+            st.write(
+                f"**Normalized Entropy:** "
+                f"{tech_uncertainty.get('normalized_entropy', 0):.3f} — "
+                f"{tech_uncertainty.get('entropy_interpretation', '')}"
+            )
+
+            st.write(
+                f"**Image Quality:** "
+                f"{tech_quality.get('score_percentage', 0):.2f}% "
+                f"({tech_quality.get('status', '')})"
+            )
+
+            st.write(
+                f"**Model Trust:** "
+                f"{tech_model_trust.get('score_percentage', 0):.2f}% "
+                f"({tech_model_trust.get('status', '')})"
+            )
+
+            st.write(
+                f"**Final Trust:** "
+                f"{tech_final_trust.get('score_percentage', 0):.2f}% "
+                f"({tech_final_trust.get('status', '')})"
+            )
+
+            st.write(
+                f"**Referral:** {tech_referral.get('priority', '')} — "
+                f"Urgency: {tech_referral.get('urgency_level', '')}"
+            )
+
+            st.write(
+                f"**Decision Basis:** "
+                f"{technical_explanation.get('decision_basis', '')}"
+            )
+
+
+    # --------------------------------------------------------
+    # RISK & REFERRAL
+    # --------------------------------------------------------
+
+    st.markdown(
+        '<div class="section-title">🚨 Risk & Referral Prioritization</div>',
+        unsafe_allow_html=True
+    )
+
+    st.warning(
+        f"**Referral Priority:** {referral['priority']}"
+    )
+
+    r1, r2 = st.columns(2)
+
+    with r1:
+
+        st.write(
+            f"**Urgency Level:** {referral['urgency_level']}"
+        )
+
+        st.write(
+            f"**Reason:** {referral['reason']}"
+        )
+
+    with r2:
+
+        st.write(
+            f"**Recommended Action:** {referral['action']}"
+        )
+
+
+    # --------------------------------------------------------
+    # AI RELIABILITY
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 🛡️ AI Reliability Assessment"
+    )
+
+    st.write(
+        f"Model Trust: **{model_trust['status']}**"
+    )
+
+    st.write(
+        f"Model Trust Score: "
+        f"**{model_trust['percentage']:.2f}%**"
+    )
+
+    st.write(
+        f"Final Reliability: "
+        f"**{final_trust['percentage']:.2f}%**"
+    )
+
+    st.info(
+        final_trust["recommendation"]
+    )
+
+
+    # --------------------------------------------------------
+    # SCREENING REPORT
+    # --------------------------------------------------------
+
+    st.markdown(
+        '<div class="section-title">📄 Screening Report</div>',
+        unsafe_allow_html=True
+    )
+
+    report_col1, report_col2 = st.columns(2)
+
+    with report_col1:
+
+        st.write(
+            f"**Patient:** {patient_name or 'Not provided'}"
+        )
+
+        st.write(
+            f"**Patient ID:** {patient_id or 'Not provided'}"
+        )
+
+        st.write(
+            f"**Predicted Severity:** {prediction['class_name']}"
+        )
+
+        st.write(
+            f"**Confidence:** "
+            f"{prediction['confidence'] * 100:.2f}%"
+        )
+
+        st.write(
+            f"**Image Quality:** "
+            f"{image_quality['status']}"
+        )
+
+    with report_col2:
+
+        st.write(
+            f"**Referral:** {referral['priority']}"
+        )
+
+        st.write(
+            f"**Urgency:** {referral['urgency_level']}"
+        )
+
+        st.write(
+            f"**AI Reliability:** {final_trust['status']}"
+        )
+
+        st.write(
+            f"**Connectivity:** {connectivity}"
+        )
+
+
+    # --------------------------------------------------------
+    # SAVE RECORD
+    # --------------------------------------------------------
+
+    record = {
+
+        "timestamp": datetime.now().isoformat(),
+
+        "patient_name": patient_name,
+
+        "patient_id": patient_id,
+
+        "age": age,
+
+        "sex": sex,
+
+        "prediction": prediction["class_name"],
+
+        "confidence": prediction["confidence"],
+
+        "image_quality": image_quality["status"],
+
+        "image_quality_score": image_quality["percentage"],
+
+        "ai_reliability": final_trust["status"],
+
+        "reliability_score": final_trust["percentage"],
+
+        "referral_priority": referral["priority"],
+
+        "urgency": referral["urgency_level"],
+
+        "decision_basis": technical_explanation.get(
+            "decision_basis",
+            ""
+        ),
+
+        "connectivity": connectivity
+    }
+
+    if st.button(
+        "💾 Save Screening Record"
+    ):
+
+        save_history(
+            record
+        )
+
+        st.success(
+            "Screening record saved locally."
+        )
+
+
+    # --------------------------------------------------------
+    # PDF
+    # --------------------------------------------------------
+
+    if st.button(
+        "📄 Generate PDF Report"
+    ):
+
+        pdf_path = generate_pdf(
+            patient_name or "Unknown",
+            patient_id or "N/A",
+            age,
+            sex,
+            result,
+            image_quality
+        )
+
+        with open(
+            pdf_path,
+            "rb"
+        ) as f:
+
+            pdf_bytes = f.read()
 
         st.download_button(
-            "⬇️ Download Screening Report",
-            data=f,
-            file_name=os.path.basename(pdf_file),
+            label="⬇️ Download Screening Report",
+            data=pdf_bytes,
+            file_name=os.path.basename(
+                pdf_path
+            ),
             mime="application/pdf",
             use_container_width=True
         )
@@ -975,86 +1462,61 @@ if st.session_state.analysis_done:
 
 st.divider()
 
-st.markdown("## 📋 Screening History")
+st.markdown(
+    '<div class="section-title">📋 Local Screening History</div>',
+    unsafe_allow_html=True
+)
 
-if st.session_state.screenings:
+history = load_history()
 
-    history_df = pd.DataFrame(
-        st.session_state.screenings
-    )
+if history:
 
-    display_columns = [
-        "patient_id",
-        "age",
-        "severity",
-        "risk",
-        "referral",
-        "quality_status",
-        "date"
-    ]
+    for item in reversed(history[-10:]):
 
-    available_columns = [
-        c for c in display_columns
-        if c in history_df.columns
-    ]
+        with st.expander(
+            f"{item.get('patient_name', 'Unknown')} — "
+            f"{item.get('prediction', 'N/A')}"
+        ):
 
-    st.dataframe(
-        history_df[available_columns],
-        use_container_width=True,
-        hide_index=True
-    )
+            st.write(
+                f"**Date:** {item.get('timestamp', '')}"
+            )
+
+            st.write(
+                f"**Patient ID:** {item.get('patient_id', 'N/A')}"
+            )
+
+            st.write(
+                f"**Prediction:** {item.get('prediction', 'N/A')}"
+            )
+
+            st.write(
+                f"**Confidence:** "
+                f"{item.get('confidence', 0) * 100:.2f}%"
+            )
+
+            st.write(
+                f"**Referral:** "
+                f"{item.get('referral_priority', 'N/A')}"
+            )
+
+            if item.get("decision_basis"):
+
+                st.write(
+                    f"**Decision Basis:** "
+                    f"{item.get('decision_basis', '')}"
+                )
+
+            st.write(
+                f"**Connectivity:** "
+                f"{item.get('connectivity', 'N/A')}"
+            )
 
 else:
 
     st.info(
-        "No screening records yet. "
-        "Complete a screening to see it here."
+        "No screening records saved yet."
     )
-
-
-# ============================================================
-# RURAL / OFFLINE FEATURE
-# ============================================================
-
-st.divider()
-
-st.markdown("## 🌐 Rural & Low-Connectivity Support")
-
-col1, col2 = st.columns(2)
-
-with col1:
-
-    st.markdown("""
-    ### 📡 Limited Connectivity
-
-    DRiShti-AI is designed around a low-connectivity workflow:
-
-    - Screening can continue during limited connectivity.
-    - Records can be stored locally.
-    - Results can be reviewed later.
-    - Data can be synchronized when connectivity returns.
-    """)
-
-with col2:
-
-    if connectivity:
-
-        st.warning(
-            "🔴 LIMITED CONNECTIVITY — "
-            "Local storage mode active."
-        )
-
-        if st.button("🔄 Simulate Sync"):
-
-            st.success(
-                "Local screening records synchronized successfully."
-            )
-
-    else:
-
-        st.success(
-            "🟢 CONNECTED — System ready for synchronization."
-        )
 
 
 # ============================================================
@@ -1063,38 +1525,23 @@ with col2:
 
 st.divider()
 
-st.markdown("""
-<div class="warning-box">
-
-<b>⚠️ Medical Disclaimer</b>
-
-<br><br>
-
-DRiShti-AI is an AI-assisted screening prototype intended
-to support diabetic retinopathy screening workflows.
-
-It does <b>not</b> replace professional medical examination,
-clinical judgment, or diagnosis by a qualified healthcare
-professional.
-
-</div>
-""", unsafe_allow_html=True)
+st.warning(
+    "⚠️ DRiShti-AI is an AI-assisted screening prototype. "
+    "It does not replace ophthalmologist diagnosis, "
+    "clinical judgment, or professional medical examination."
+)
 
 
 # ============================================================
 # FOOTER
 # ============================================================
 
-st.markdown("""
-<div class="footer">
-
-<b>DRiShti-AI</b> |
-Explainable AI for Diabetic Retinopathy Screening |
-SIH26038
-
-<br><br>
-
-Built for Smart India Hackathon 2026
-
-</div>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div class="footer">
+        DRiShti-AI • SIH26038 • Smart India Hackathon 2026<br>
+        Explainable AI for Diabetic Retinopathy Screening in Rural India
+    </div>
+    """,
+    unsafe_allow_html=True
+)
