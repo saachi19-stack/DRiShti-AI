@@ -1,8 +1,9 @@
 streamlit
+tensorflow
 pillow
 numpy
 opencv-python-headless
 pandas
 matplotlib
-reportlab
 scikit-learn
+reportlab

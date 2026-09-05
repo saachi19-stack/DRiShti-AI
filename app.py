@@ -25,7 +25,12 @@ st.set_page_config(
 # ============================================================
 # FOLDERS
 # ============================================================
+import os
 
+st.write("CURRENT FOLDER:", os.getcwd())
+st.write("REPORTS:", os.path.abspath("reports"))
+st.write("IS REPORTS A FOLDER:", os.path.isdir("reports"))
+st.write("IS REPORTS A FILE:", os.path.isfile("reports"))
 os.makedirs("reports", exist_ok=True)
 os.makedirs("sample_images", exist_ok=True)
 

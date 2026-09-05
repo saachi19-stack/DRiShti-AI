@@ -9,11 +9,6 @@ venv/
 reports/*
 !reports/.gitkeep
 
-models/*.h5
-models/*.keras
-models/*.pkl
-models/*.pth
-
 *.csv
 *.zip
 kaggle.json

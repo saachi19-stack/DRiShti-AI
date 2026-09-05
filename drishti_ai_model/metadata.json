@@ -1,0 +1,44 @@
+{
+    "project_name": "DrishtiAI",
+    "model_name": "EfficientNetB0",
+    "task": "5-Class Diabetic Retinopathy Screening",
+    "input_size": [
+        224,
+        224,
+        3
+    ],
+    "classes": {
+        "0": "No DR",
+        "1": "Mild",
+        "2": "Moderate",
+        "3": "Severe",
+        "4": "Proliferative DR"
+    },
+    "features": [
+        "5-class diabetic retinopathy classification",
+        "prediction confidence",
+        "prediction margin analysis",
+        "entropy-based uncertainty analysis",
+        "model trust scoring",
+        "retinal image quality assessment",
+        "final trust assessment",
+        "referral priority engine",
+        "Grad-CAM explainability",
+        "specialist review escalation"
+    ],
+    "trust_engine": {
+        "type": "prototype heuristic",
+        "model_trust_weights": {
+            "confidence": 0.5,
+            "prediction_margin": 0.25,
+            "prediction_certainty": 0.25
+        },
+        "final_trust_weights": {
+            "model_trust": 0.7,
+            "image_quality": 0.3
+        },
+        "clinical_note": "Trust and referral logic are prototype heuristic components for AI-assisted screening and are not clinically validated."
+    },
+    "intended_use": "AI-assisted diabetic retinopathy screening and triage support. Not intended to replace ophthalmologist diagnosis.",
+    "version": "1.0.0"
+}

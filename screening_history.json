@@ -1,0 +1,54 @@
+[
+    {
+        "patient_id": "98654",
+        "age": 46,
+        "diabetes_duration": 5,
+        "date": "05-09-2026 15:27",
+        "severity": "Moderate Diabetic Retinopathy",
+        "confidence": 91.0,
+        "risk": "HIGH",
+        "referral": "High Priority",
+        "guidance": "Ophthalmic evaluation should be prioritized.",
+        "quality_score": 92,
+        "quality_status": "Good"
+    },
+    {
+        "patient_id": "98654",
+        "age": 46,
+        "diabetes_duration": 5,
+        "date": "05-09-2026 15:27",
+        "severity": "Moderate Diabetic Retinopathy",
+        "confidence": 91.0,
+        "risk": "HIGH",
+        "referral": "High Priority",
+        "guidance": "Ophthalmic evaluation should be prioritized.",
+        "quality_score": 92,
+        "quality_status": "Good"
+    },
+    {
+        "patient_id": "986544",
+        "age": 35,
+        "diabetes_duration": 9,
+        "date": "05-09-2026 15:33",
+        "severity": "Moderate Diabetic Retinopathy",
+        "confidence": 91.0,
+        "risk": "HIGH",
+        "referral": "High Priority",
+        "guidance": "Ophthalmic evaluation should be prioritized.",
+        "quality_score": 100,
+        "quality_status": "Good"
+    },
+    {
+        "patient_id": "655859",
+        "age": 53,
+        "diabetes_duration": 3,
+        "date": "05-09-2026 21:14",
+        "severity": "Moderate Diabetic Retinopathy",
+        "confidence": 91.0,
+        "risk": "HIGH",
+        "referral": "High Priority",
+        "guidance": "Ophthalmic evaluation should be prioritized.",
+        "quality_score": 92,
+        "quality_status": "Good"
+    }
+]
