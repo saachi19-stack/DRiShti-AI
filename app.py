@@ -23,12 +23,12 @@ from reportlab.pdfgen import canvas
 # its model/metadata/class files.
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_DIR = os.path.join(APP_DIR, "drishti_ai_explanation")
+MODEL_DIR = os.path.join(APP_DIR, "DRiShti_AI_explanation")
 
 if MODEL_DIR not in sys.path:
     sys.path.insert(0, MODEL_DIR)
 
-from inference import DrishtiAI
+from DRiShti_AI_explanation.inference import DrishtiAI
 
 
 # ============================================================
@@ -58,83 +58,61 @@ os.makedirs(REPORT_DIR, exist_ok=True)
 st.markdown("""
 <style>
 
-:root {
-    --primary: #0F5C5C;
-    --bg: #F7F9FA;
-    --accent: #E8785A;
-}
-
-.stApp {
-    background-color: var(--bg);
-}
-
 .main-title {
-    font-family: 'Segoe UI', 'Inter', sans-serif;
     font-size: 42px;
     font-weight: 800;
-    color: var(--primary);
     margin-bottom: 0px;
 }
 
 .subtitle {
-    font-family: 'Segoe UI', 'Inter', sans-serif;
     font-size: 18px;
-    color: #555;
+    color: #666;
     margin-bottom: 25px;
 }
 
 .section-title {
-    font-family: 'Segoe UI', 'Inter', sans-serif;
     font-size: 25px;
     font-weight: 700;
-    color: var(--primary);
     margin-top: 20px;
-    border-left: 5px solid var(--primary);
-    padding-left: 12px;
 }
 
-.result-box, .metric-card {
-    padding: 20px;
+.result-box {
+    padding: 22px;
+    border-radius: 15px;
+    margin: 10px 0;
+    border: 1px solid #ddd;
+}
+
+.metric-card {
+    padding: 18px;
     border-radius: 14px;
-    border: 1px solid #dfe8e8;
-    background-color: white;
+    border: 1px solid #ddd;
+    text-align: center;
+}
+
+.small-note {
+    font-size: 13px;
+    color: #666;
 }
 
 .explanation-box {
     padding: 20px;
     border-radius: 14px;
     border: 1px solid #cfe3e3;
-    background-color: #eef7f7;
-}
-
-/* Buttons */
-.stButton > button {
-    background-color: var(--primary);
-    color: white;
-    border-radius: 10px;
-    border: none;
-    font-weight: 600;
-}
-
-.stButton > button:hover {
-    background-color: #0c4747;
-    color: white;
-}
-
-/* Alerts that signal risk/urgency use the amber accent */
-div[data-testid="stAlert"][kind="warning"] {
-    border-left: 5px solid var(--accent);
+    background-color: #f4fbfb;
+    margin: 10px 0;
 }
 
 .footer {
     text-align: center;
-    color: #888;
+    color: #777;
     font-size: 13px;
     margin-top: 40px;
 }
 
 </style>
 """, unsafe_allow_html=True)
+
 
 # ============================================================
 # LOAD AI MODEL
